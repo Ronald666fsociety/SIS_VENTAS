@@ -126,6 +126,19 @@
               <q-icon v-else name="chevron_right" color="grey-6" />
             </q-item-section>
           </q-item>
+
+          <q-item clickable v-ripple @click="abrirServidor = true">
+            <q-item-section avatar>
+              <q-icon name="dns" color="indigo-7" />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label class="text-weight-medium">Servidor de Datos (Internet / Wi-Fi)</q-item-label>
+              <q-item-label caption>Cambiar IP local Wi-Fi o URL de túnel Internet</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-icon name="chevron_right" color="grey-6" />
+            </q-item-section>
+          </q-item>
         </q-list>
       </q-card>
 
@@ -322,6 +335,7 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+    <ServerConfigDialog v-model="abrirServidor" />
   </q-page>
 </template>
 
@@ -332,6 +346,7 @@ import { useAuthStore } from '../../shared/stores/auth';
 import { useFavoritosStore } from '../../shared/stores/favoritos';
 import { api } from '../../shared/api/client';
 import { Notify, Dialog } from 'quasar';
+import ServerConfigDialog from '../../shared/components/ServerConfigDialog.vue';
 import type { Direccion, Producto } from '../../shared/types';
 
 const router = useRouter();
@@ -343,6 +358,7 @@ const notificaciones = ref<any[]>([]);
 const notificacionesSinLeer = ref(0);
 const abrirDireccionesDialog = ref(false);
 const abrirNotificacionesDialog = ref(false);
+const abrirServidor = ref(false);
 
 const resumenGastos = ref<any | null>(null);
 const abrirGastosDialog = ref(false);

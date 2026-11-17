@@ -21,6 +21,8 @@
           <q-btn flat round dense icon="refresh" color="primary" @click="cargarMetricas" />
         </div>
 
+        <UbicacionActualChip />
+
         <!-- Tarjeta URGENTE: Pagos por verificar -->
         <q-card
           flat
@@ -171,6 +173,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../../shared/api/client';
 import { useAuthStore } from '../../shared/stores/auth';
+import UbicacionActualChip from '../../shared/components/UbicacionActualChip.vue';
 import type { DashboardResumen } from '../../shared/types';
 
 const router = useRouter();

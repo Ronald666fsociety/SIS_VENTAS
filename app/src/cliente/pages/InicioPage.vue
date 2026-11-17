@@ -1,7 +1,7 @@
 <template>
   <q-page class="q-pa-md">
     <!-- Hero sutil de bienvenida -->
-    <div class="hero-banner q-pa-md q-mb-md row items-center justify-between">
+    <div class="hero-banner q-pa-md q-mb-sm row items-center justify-between">
       <div>
         <div class="text-caption text-indigo-1 text-uppercase text-weight-bold" style="letter-spacing: 0.06em;">
           Envíos a toda Bolivia
@@ -17,6 +17,8 @@
         <q-icon name="local_mall" size="30px" color="white" />
       </div>
     </div>
+
+    <UbicacionActualChip />
 
     <!-- Buscador -->
     <q-input
@@ -300,6 +302,7 @@ import { useFavoritosStore } from '../../shared/stores/favoritos';
 import { Notify } from 'quasar';
 import PrecioTag from '../../shared/components/PrecioTag.vue';
 import VisorImagen from '../../shared/components/VisorImagen.vue';
+import UbicacionActualChip from '../../shared/components/UbicacionActualChip.vue';
 import type { Producto } from '../../shared/types';
 
 const router = useRouter();

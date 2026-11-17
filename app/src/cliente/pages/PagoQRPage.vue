@@ -118,27 +118,41 @@
       <q-card flat bordered class="rounded-borders bg-white shadow-2 q-pa-md q-mb-lg">
         <div class="text-subtitle1 text-weight-bold q-mb-sm">Subir Comprobante de Pago</div>
 
-        <q-file
-          v-model="archivoComprobante"
-          outlined
-          dense
-          label="Selecciona o toma foto del comprobante *"
-          accept="image/*"
-          bottom-slots
-          @update:model-value="generarPreview"
-        >
-          <template #prepend>
-            <q-icon name="attach_file" />
-          </template>
-          <template #append>
-            <q-icon
-              v-if="archivoComprobante"
-              name="close"
-              @click.stop="limpiarComprobante"
-              class="cursor-pointer"
-            />
-          </template>
-        </q-file>
+        <div class="row q-gutter-xs items-start q-mb-sm">
+          <q-file
+            v-model="archivoComprobante"
+            outlined
+            dense
+            label="Subir captura del comprobante *"
+            accept="image/*"
+            bottom-slots
+            class="col"
+            @update:model-value="generarPreview"
+          >
+            <template #prepend>
+              <q-icon name="attach_file" />
+            </template>
+            <template #append>
+              <q-icon
+                v-if="archivoComprobante"
+                name="close"
+                @click.stop="limpiarComprobante"
+                class="cursor-pointer"
+              />
+            </template>
+          </q-file>
+          <q-btn
+            outline
+            dense
+            no-caps
+            color="primary"
+            icon="add_a_photo"
+            label="Cámara"
+            class="q-px-sm"
+            style="height: 40px;"
+            @click="tomarFotoComprobante"
+          />
+        </div>
 
         <!-- Vista previa de imagen -->
         <div v-if="previewUrl" class="text-center q-my-sm">
@@ -193,6 +207,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from '../../shared/api/client';
 import { Notify } from 'quasar';
 import type { Pedido, ConfiguracionPago } from '../../shared/types';
+import { comprimirImagen, capturarFotoNativa } from '../../shared/utils/imagen';
 
 const route = useRoute();
 const router = useRouter();
@@ -261,13 +276,22 @@ function limpiarComprobante() {
   previewUrl.value = null;
 }
 
+async function tomarFotoComprobante() {
+  const file = await capturarFotoNativa();
+  if (file) {
+    archivoComprobante.value = file;
+    generarPreview(file);
+  }
+}
+
 async function enviarComprobante() {
   if (!archivoComprobante.value || !pedido.value) return;
 
   subiendo.value = true;
   try {
+    const comprobanteOptimizado = await comprimirImagen(archivoComprobante.value);
     const formData = new FormData();
-    formData.append('comprobante', archivoComprobante.value);
+    formData.append('comprobante', comprobanteOptimizado);
     if (nroTransaccion.value.trim()) {
       formData.append('nro_transaccion', nroTransaccion.value.trim());
     }

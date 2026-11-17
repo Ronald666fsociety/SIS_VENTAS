@@ -27,13 +27,26 @@
         dense
         label="URL del servidor API"
         placeholder="http://192.168.10.127:8000"
-        hint="Usa la IP local de tu PC (misma red Wi-Fi) o URL de túnel"
-        class="q-mb-md"
+        hint="Usa la URL de Internet (https://...) o la IP Wi-Fi local de tu PC"
+        class="q-mb-sm"
       >
         <template #prepend>
           <q-icon name="link" color="primary" />
         </template>
       </q-input>
+
+      <div class="row q-gutter-xs q-mb-md">
+        <q-btn
+          dense
+          outline
+          no-caps
+          size="sm"
+          color="primary"
+          icon="wifi"
+          label="Wi-Fi Local (192.168.10.127)"
+          @click="urlInput = 'http://192.168.10.127:8000/api/v1'"
+        />
+      </div>
 
       <div class="row q-gutter-x-sm">
         <q-btn

@@ -1,12 +1,58 @@
 <template>
   <q-page class="q-pa-md">
-    <div class="row justify-between items-center q-mb-md">
+    <div class="row justify-between items-center q-mb-sm">
       <div>
         <div class="text-h6 text-weight-bolder text-grey-9">Mis Entregas</div>
         <div class="text-caption text-grey-6">Ruta de entrega y GPS en tiempo real</div>
       </div>
       <q-btn flat round dense icon="refresh" color="grey-7" @click="cargarEntregas" />
     </div>
+
+    <!-- Tarjeta de ubicación GPS actual del repartidor -->
+    <q-card flat bordered class="bg-white q-pa-sm q-mb-md">
+      <div class="row items-center justify-between">
+        <div class="row items-center q-gutter-x-sm">
+          <q-avatar
+            size="36px"
+            :color="miUbicacion ? 'teal-1' : 'amber-1'"
+            :text-color="miUbicacion ? 'teal-8' : 'amber-9'"
+            :icon="miUbicacion ? 'my_location' : 'location_searching'"
+          />
+          <div>
+            <div class="text-caption text-weight-bold text-grey-9">
+              {{ miUbicacion ? 'Tu ubicación GPS actual' : 'Obteniendo ubicación GPS...' }}
+            </div>
+            <div class="text-caption text-grey-7 tabular-nums">
+              <span v-if="miUbicacion">{{ miUbicacion.lat.toFixed(5) }}, {{ miUbicacion.lng.toFixed(5) }}</span>
+              <span v-else>Activa el GPS y concede permiso de ubicación</span>
+            </div>
+          </div>
+        </div>
+        <div class="row q-gutter-x-xs">
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="primary"
+            icon="gps_fixed"
+            label="Actualizar"
+            :loading="buscandoGps"
+            @click="actualizarMiUbicacion(false)"
+          />
+          <q-btn
+            v-if="miUbicacion"
+            flat
+            dense
+            round
+            color="teal-8"
+            icon="open_in_new"
+            @click="abrirMapa(miUbicacion.lat, miUbicacion.lng)"
+          >
+            <q-tooltip>Ver mi ubicación en mapa</q-tooltip>
+          </q-btn>
+        </div>
+      </div>
+    </q-card>
 
     <!-- Toggle Activas vs Historial -->
     <q-btn-toggle
@@ -262,6 +308,8 @@ import { api } from '../../shared/api/client';
 import { Notify } from 'quasar';
 import EstadoBadge from '../../shared/components/EstadoBadge.vue';
 import type { Pedido } from '../../shared/types';
+import { obtenerGpsActual, iniciarObservadorGps, type CoordenadasGps } from '../../shared/utils/ubicacion';
+import { comprimirImagen } from '../../shared/utils/imagen';
 
 const vistaHistorial = ref(false);
 const pedidos = ref<Pedido[]>([]);
@@ -275,16 +323,39 @@ const fotoEntrega = ref<File | null>(null);
 const notaFallida = ref('');
 const procesando = ref(false);
 
-let watchId: number | null = null;
+const miUbicacion = ref<CoordenadasGps | null>(null);
+const buscandoGps = ref(false);
+let detenerWatchGps: (() => void) | null = null;
 let lastGpsSentAt = 0;
 
 onMounted(() => {
+  actualizarMiUbicacion(true);
   cargarEntregas();
 });
 
 onBeforeUnmount(() => {
   detenerSeguimientoGps();
 });
+
+async function actualizarMiUbicacion(silencioso = false) {
+  buscandoGps.value = true;
+  try {
+    const gps = await obtenerGpsActual(12000);
+    if (gps) {
+      miUbicacion.value = gps;
+      if (!silencioso) {
+        Notify.create({ type: 'positive', message: 'Ubicación GPS actualizada', timeout: 1200 });
+      }
+    } else if (!silencioso) {
+      Notify.create({
+        type: 'warning',
+        message: 'No se pudo leer tu GPS. Revisa que la ubicación y permisos estén activos.',
+      });
+    }
+  } finally {
+    buscandoGps.value = false;
+  }
+}
 
 async function cargarEntregas() {
   cargando.value = true;
@@ -296,7 +367,7 @@ async function cargarEntregas() {
 
     const hayEnCamino = pedidos.value.some((p) => p.estado === 'en_camino');
     if (hayEnCamino && !vistaHistorial.value) {
-      iniciarSeguimientoGps();
+      await iniciarSeguimientoGps();
     } else {
       detenerSeguimientoGps();
     }
@@ -307,48 +378,40 @@ async function cargarEntregas() {
   }
 }
 
-function obtenerPosicionActual(timeoutMs = 3000): Promise<{ lat: number; lng: number } | null> {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      resolve(null);
-      return;
+async function obtenerPosicionActual(timeoutMs = 8000): Promise<{ lat: number; lng: number } | null> {
+  const gps = await obtenerGpsActual(timeoutMs);
+  if (gps) {
+    miUbicacion.value = gps;
+    return { lat: gps.lat, lng: gps.lng };
+  }
+  return null;
+}
+
+async function iniciarSeguimientoGps() {
+  if (detenerWatchGps) return;
+  detenerWatchGps = await iniciarObservadorGps(async (coords) => {
+    miUbicacion.value = coords;
+    const ahora = Date.now();
+    if (ahora - lastGpsSentAt < 8000) return;
+    lastGpsSentAt = ahora;
+
+    const enCamino = pedidos.value.filter((p) => p.estado === 'en_camino');
+    for (const p of enCamino) {
+      try {
+        const resp = await api.post(`/repartidor/pedidos/${p.id}/ubicacion`, {
+          lat: coords.lat,
+          lng: coords.lng,
+        });
+        p.repartidor_ubicacion = resp.data.data?.repartidor_ubicacion || p.repartidor_ubicacion;
+      } catch (e) {}
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: timeoutMs }
-    );
   });
 }
 
-function iniciarSeguimientoGps() {
-  if (watchId !== null || !navigator.geolocation) return;
-  watchId = navigator.geolocation.watchPosition(
-    async (pos) => {
-      const ahora = Date.now();
-      if (ahora - lastGpsSentAt < 8000) return;
-      lastGpsSentAt = ahora;
-
-      const enCamino = pedidos.value.filter((p) => p.estado === 'en_camino');
-      for (const p of enCamino) {
-        try {
-          const resp = await api.post(`/repartidor/pedidos/${p.id}/ubicacion`, {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          });
-          p.repartidor_ubicacion = resp.data.data?.repartidor_ubicacion || p.repartidor_ubicacion;
-        } catch (e) {}
-      }
-    },
-    () => {},
-    { enableHighAccuracy: true }
-  );
-}
-
 function detenerSeguimientoGps() {
-  if (watchId !== null && navigator.geolocation) {
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
+  if (detenerWatchGps) {
+    detenerWatchGps();
+    detenerWatchGps = null;
   }
 }
 
@@ -423,9 +486,10 @@ async function confirmarEntrega() {
 
   procesando.value = true;
   try {
+    const fotoOptimizada = await comprimirImagen(fotoEntrega.value);
     const formData = new FormData();
     formData.append('codigo', codigoEntrega.value);
-    formData.append('foto', fotoEntrega.value);
+    formData.append('foto', fotoOptimizada);
 
     await api.post(`/repartidor/pedidos/${pedidoAccion.value.id}/entregar`, formData);
     Notify.create({ type: 'positive', message: '¡Pedido entregado con éxito!' });

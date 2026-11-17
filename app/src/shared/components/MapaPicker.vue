@@ -11,7 +11,7 @@
         icon="my_location"
         label="Mi ubicación"
         :loading="localizando"
-        @click="obtenerUbicacionActual"
+        @click="obtenerUbicacionActual(false)"
       />
     </div>
 
@@ -34,6 +34,11 @@
 
     <!-- Contenedor del mapa -->
     <div ref="mapElement" class="mapa-box rounded-borders shadow-1" style="height: 250px; width: 100%;"></div>
+
+    <div v-if="gpsActualTexto" class="text-caption text-positive text-weight-medium row items-center q-gutter-x-xs">
+      <q-icon name="gps_fixed" size="15px" />
+      <span>{{ gpsActualTexto }}</span>
+    </div>
 
     <div class="text-caption text-grey-6">
       Toca cualquier punto del mapa o arrastra el marcador azul hasta tu dirección exacta.
@@ -67,6 +72,7 @@ import { Notify } from 'quasar';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { CIUDADES_BOLIVIA, type CiudadBolivia } from '../utils/bolivia';
+import { obtenerGpsActual } from '../utils/ubicacion';
 
 const props = withDefaults(
   defineProps<{
@@ -92,6 +98,7 @@ const emit = defineEmits<{
 const mapElement = ref<HTMLElement | null>(null);
 const localizando = ref(false);
 const ciudadSeleccionada = ref<CiudadBolivia | null>(null);
+const gpsActualTexto = ref('');
 const resultadoZona = ref<{
   cubre: boolean;
   zona: any | null;
@@ -102,6 +109,7 @@ const resultadoZona = ref<{
 
 let map: L.Map | null = null;
 let marker: L.Marker | null = null;
+let precisionCircle: L.Circle | null = null;
 
 // Fix standard Leaflet marker icons in bundlers
 const customIcon = L.icon({
@@ -141,8 +149,9 @@ onMounted(() => {
     validarZona(e.latlng.lat, e.latlng.lng);
   });
 
-  // Validar inicialmente
+  // Validar inicialmente y centrar automáticamente en GPS real si está disponible
   validarZona(lat, lng);
+  obtenerUbicacionActual(true);
 });
 
 onBeforeUnmount(() => {
@@ -176,34 +185,35 @@ async function validarZona(lat: number, lng: number) {
   }
 }
 
-async function obtenerUbicacionActual() {
+async function obtenerUbicacionActual(silencioso = false) {
   localizando.value = true;
   try {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          if (map && marker) {
-            map.setView([lat, lng], 16);
-            marker.setLatLng([lat, lng]);
-            validarZona(lat, lng);
-          }
-          localizando.value = false;
-        },
-        () => {
-          Notify.create({
-            type: 'negative',
-            message: 'No pudimos acceder a tu GPS. Elige tu ciudad o marca un punto en el mapa.',
-          });
-          localizando.value = false;
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    } else {
-      localizando.value = false;
+    const coords = await obtenerGpsActual(12000);
+    if (coords && map && marker) {
+      map.setView([coords.lat, coords.lng], 16);
+      marker.setLatLng([coords.lat, coords.lng]).bindPopup('Tu ubicación actual').openPopup();
+
+      if (precisionCircle) {
+        precisionCircle.setLatLng([coords.lat, coords.lng]).setRadius(Math.min(coords.precision || 40, 200));
+      } else {
+        precisionCircle = L.circle([coords.lat, coords.lng], {
+          radius: Math.min(coords.precision || 40, 200),
+          color: '#4f46e5',
+          fillColor: '#6366f1',
+          fillOpacity: 0.16,
+          weight: 1.5,
+        }).addTo(map);
+      }
+
+      gpsActualTexto.value = `GPS activo: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`;
+      await validarZona(coords.lat, coords.lng);
+    } else if (!silencioso) {
+      Notify.create({
+        type: 'warning',
+        message: 'Activa el GPS de tu celular y acepta el permiso de ubicación.',
+      });
     }
-  } catch (e) {
+  } finally {
     localizando.value = false;
   }
 }

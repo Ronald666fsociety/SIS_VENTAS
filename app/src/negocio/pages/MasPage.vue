@@ -79,6 +79,20 @@
             <q-icon name="chevron_right" color="grey-5" />
           </q-item-section>
         </q-item>
+
+        <!-- Configuración de servidor API -->
+        <q-item clickable v-ripple class="q-py-md" @click="abrirServidor = true">
+          <q-item-section avatar>
+            <q-avatar color="indigo-1" text-color="primary" icon="dns" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label class="text-weight-bold text-grey-10">Servidor de Datos (Internet / Wi-Fi)</q-item-label>
+            <q-item-label caption>Cambiar entre IP local Wi-Fi o túnel de Internet</q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-icon name="chevron_right" color="grey-5" />
+          </q-item-section>
+        </q-item>
       </q-list>
     </q-card>
 
@@ -315,6 +329,17 @@
             @update:model-value="aplicarPresetCiudadZona"
           />
 
+          <q-btn
+            outline
+            dense
+            no-caps
+            color="primary"
+            icon="my_location"
+            label="Usar mi ubicación GPS actual"
+            class="full-width"
+            @click="usarMiUbicacionEnZona"
+          />
+
           <q-input
             v-model="formZona.nombre"
             outlined
@@ -473,6 +498,7 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+    <ServerConfigDialog v-model="abrirServidor" />
   </q-page>
 </template>
 
@@ -484,6 +510,9 @@ import { useAuthStore } from '../../shared/stores/auth';
 import { Notify } from 'quasar';
 import { CIUDADES_BOLIVIA, CENTRO_BOLIVIA, type CiudadBolivia } from '../../shared/utils/bolivia';
 import { descargarBlobArchivo } from '../../shared/utils/descargar';
+import { comprimirImagen } from '../../shared/utils/imagen';
+import { obtenerGpsActual } from '../../shared/utils/ubicacion';
+import ServerConfigDialog from '../../shared/components/ServerConfigDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -495,6 +524,7 @@ const abrirZonas = ref(false);
 const abrirUsuarios = ref(false);
 const abrirAuditoria = ref(false);
 const abrirNuevoUsuario = ref(false);
+const abrirServidor = ref(false);
 
 const fechaDesde = ref(new Date().toISOString().substring(0, 10));
 const fechaHasta = ref(new Date().toISOString().substring(0, 10));
@@ -585,7 +615,8 @@ async function guardarConfigPago() {
     formData.append('instrucciones', formPago.value.instrucciones);
     formData.append('aceptar_efectivo', formPago.value.aceptar_efectivo ? '1' : '0');
     if (nuevoQRFile.value) {
-      formData.append('qr_imagen', nuevoQRFile.value);
+      const qrOptimizado = await comprimirImagen(nuevoQRFile.value);
+      formData.append('qr_imagen', qrOptimizado);
     }
     await api.post('/admin/configuracion-pago', formData);
     Notify.create({ type: 'positive', message: 'Configuración de pago actualizada' });
@@ -656,6 +687,17 @@ function aplicarPresetCiudadZona(c: CiudadBolivia | null) {
   if (c.radioSugeridoKm) {
     formZona.value.radio_km = c.radioSugeridoKm;
   }
+}
+
+async function usarMiUbicacionEnZona() {
+  const gps = await obtenerGpsActual(10000);
+  if (!gps) {
+    Notify.create({ type: 'warning', message: 'No se pudo obtener tu GPS actual.' });
+    return;
+  }
+  formZona.value.centro_lat = Number(gps.lat.toFixed(6));
+  formZona.value.centro_lng = Number(gps.lng.toFixed(6));
+  Notify.create({ type: 'positive', message: 'Coordenadas tomadas desde tu GPS actual', timeout: 1200 });
 }
 
 async function guardarZona() {

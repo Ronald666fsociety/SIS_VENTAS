@@ -402,20 +402,34 @@
               </div>
 
               <!-- Selector de nueva foto con vista previa instantánea -->
-              <q-file
-                v-model="nuevaImagen"
-                outlined
-                dense
-                bg-color="white"
-                label="Seleccionar foto desde galería o cámara"
-                accept="image/*"
-                clearable
-                @update:model-value="onNuevaImagenSeleccionada"
-              >
-                <template #prepend>
-                  <q-icon name="add_a_photo" color="primary" />
-                </template>
-              </q-file>
+              <div class="row q-gutter-xs items-center">
+                <q-file
+                  v-model="nuevaImagen"
+                  outlined
+                  dense
+                  bg-color="white"
+                  label="Seleccionar archivo de imagen"
+                  accept="image/*"
+                  clearable
+                  class="col"
+                  @update:model-value="onNuevaImagenSeleccionada"
+                >
+                  <template #prepend>
+                    <q-icon name="photo_library" color="primary" />
+                  </template>
+                </q-file>
+                <q-btn
+                  outline
+                  dense
+                  no-caps
+                  color="primary"
+                  icon="add_a_photo"
+                  label="Cámara"
+                  class="q-px-sm"
+                  style="height: 40px;"
+                  @click="tomarFotoProducto"
+                />
+              </div>
 
               <!-- Vista previa de la foto seleccionada -->
               <div v-if="previewImagenUrl" class="q-mt-sm text-center">
@@ -577,6 +591,7 @@ import { ref, onMounted } from 'vue';
 import { api } from '../../shared/api/client';
 import { Notify, Dialog } from 'quasar';
 import VisorImagen from '../../shared/components/VisorImagen.vue';
+import { comprimirImagen, capturarFotoNativa } from '../../shared/utils/imagen';
 import type { Producto, Categoria } from '../../shared/types';
 
 const productos = ref<Producto[]>([]);
@@ -673,6 +688,14 @@ function onNuevaImagenSeleccionada(file: File | null) {
     previewImagenUrl.value = URL.createObjectURL(file);
   } else {
     previewImagenUrl.value = null;
+  }
+}
+
+async function tomarFotoProducto() {
+  const file = await capturarFotoNativa();
+  if (file) {
+    nuevaImagen.value = file;
+    onNuevaImagenSeleccionada(file);
   }
 }
 
@@ -778,7 +801,8 @@ async function guardarProducto() {
     }
 
     if (nuevaImagen.value) {
-      formData.append('imagenes[]', nuevaImagen.value);
+      const imagenOptimizada = await comprimirImagen(nuevaImagen.value);
+      formData.append('imagenes[]', imagenOptimizada);
     }
 
     if (productoEditando.value) {

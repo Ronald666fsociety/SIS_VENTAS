@@ -48,6 +48,53 @@ export function setCustomApiUrl(url: string): string {
 
 const apiBase = resolveApiBase();
 
+function getServerOrigin(): string {
+  const base = api.defaults.baseURL || apiBase;
+  return base.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
+}
+
+export function resolverUrlArchivo(url?: string | null): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  const origin = getServerOrigin();
+
+  if (trimmed.startsWith('/storage/')) {
+    return `${origin}/api/v1${trimmed}`;
+  }
+  if (trimmed.startsWith('/')) {
+    return `${origin}${trimmed}`;
+  }
+  // Reescribir localhost / 127.0.0.1 / esquema http<->https al servidor activo para rutas de archivos del backend
+  const m = trimmed.match(/^https?:\/\/[^/]+((?:\/api\/v1)?\/(?:storage|comprobantes|entregas)\/.+)$/i);
+  if (m && m[1]) {
+    const path = m[1].startsWith('/storage/') ? `/api/v1${m[1]}` : m[1];
+    return `${origin}${path}`;
+  }
+  return trimmed;
+}
+
+const CAMPOS_ARCHIVO = new Set(['url', 'qr_imagen_url', 'comprobante_url', 'foto_entrega_url']);
+
+function normalizarUrlsEnRespuesta(data: unknown): void {
+  if (!data || typeof data !== 'object') return;
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      normalizarUrlsEnRespuesta(item);
+    }
+    return;
+  }
+  const obj = data as Record<string, unknown>;
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (CAMPOS_ARCHIVO.has(key) && typeof val === 'string') {
+      obj[key] = resolverUrlArchivo(val);
+    } else if (val && typeof val === 'object') {
+      normalizarUrlsEnRespuesta(val);
+    }
+  }
+}
+
 export const APP_TARGET: 'cliente' | 'negocio' = (
   import.meta.env.APP_TARGET ||
   __APP_TARGET__ ||
@@ -75,9 +122,14 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor de errores
+// Interceptor de errores y normalización automática de URLs de imágenes/archivos
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (response.data && typeof response.data === 'object' && !(response.data instanceof Blob)) {
+      normalizarUrlsEnRespuesta(response.data);
+    }
+    return response;
+  },
   (error) => {
     if (error.response) {
       const status = error.response.status;
